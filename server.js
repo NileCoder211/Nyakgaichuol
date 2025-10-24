@@ -34,6 +34,39 @@ function sanitize(str) {
   return String(str).replace(/<[^>]*>?/gm, "").trim();
 }
 
+const { Resend } = require('resend');
+const resend = new Resend(process.env.RESEND_API_KEY);
+
+app.post("/api/contact", async (req, res) => {
+  try {
+    const name = sanitize(req.body.name);
+    const email = sanitize(req.body.email);
+    const subject = sanitize(req.body.subject || "New message from portfolio");
+    const message = sanitize(req.body.message);
+
+    if (!name || !email || !message) {
+      return res.status(400).json({ message: "Missing required fields" });
+    }
+
+    await resend.emails.send({
+      from: "Portfolio <onboarding@resend.dev>",
+      to: process.env.TO_EMAIL,
+      subject: `${subject} — ${name}`,
+      html: `
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p>${message.replace(/\n/g, "<br>")}</p>
+      `
+    });
+
+    return res.json({ message: "Message delivered. Thank you!" });
+  } catch (err) {
+    console.error("contact error", err);
+    return res.status(500).json({ message: "Unable to send message. Try again later." });
+  }
+});
+
+
 // Contact route
 app.post("/api/contact", async (req, res) => {
   try {
