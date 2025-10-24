@@ -2,9 +2,9 @@ require("dotenv").config();
 const express = require("express");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
-const nodemailer = require("nodemailer");
 const path = require("path");
 const cors = require("cors");
+const { Resend } = require("resend");
 
 const app = express();
 
@@ -34,38 +34,8 @@ function sanitize(str) {
   return String(str).replace(/<[^>]*>?/gm, "").trim();
 }
 
-const { Resend } = require('resend');
+// Initialize Resend client
 const resend = new Resend(process.env.RESEND_API_KEY);
-
-app.post("/api/contact", async (req, res) => {
-  try {
-    const name = sanitize(req.body.name);
-    const email = sanitize(req.body.email);
-    const subject = sanitize(req.body.subject || "New message from portfolio");
-    const message = sanitize(req.body.message);
-
-    if (!name || !email || !message) {
-      return res.status(400).json({ message: "Missing required fields" });
-    }
-
-    await resend.emails.send({
-      from: "Portfolio <onboarding@resend.dev>",
-      to: process.env.TO_EMAIL,
-      subject: `${subject} — ${name}`,
-      html: `
-        <p><strong>Name:</strong> ${name}</p>
-        <p><strong>Email:</strong> ${email}</p>
-        <p>${message.replace(/\n/g, "<br>")}</p>
-      `
-    });
-
-    return res.json({ message: "Message delivered. Thank you!" });
-  } catch (err) {
-    console.error("contact error", err);
-    return res.status(500).json({ message: "Unable to send message. Try again later." });
-  }
-});
-
 
 // Contact route
 app.post("/api/contact", async (req, res) => {
@@ -79,31 +49,28 @@ app.post("/api/contact", async (req, res) => {
       return res.status(400).json({ message: "Missing required fields" });
     }
 
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-      },
+    // Send email via Resend
+    await resend.emails.send({
+      from: "Portfolio <onboarding@resend.dev>",
+      to: process.env.TO_EMAIL,
+      subject: `${subject} — ${name}`,
+      html: `
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p>${message.replace(/\n/g, "<br>")}</p>
+      `,
     });
 
-    const mailOptions = {
-      from: `"Portfolio Contact" <${process.env.GMAIL_USER}>`,
-      to: process.env.TO_EMAIL || process.env.GMAIL_USER,
-      subject: `${subject} — ${name}`,
-      text: `Name: ${name}\nEmail: ${email}\n\n${message}`,
-      html: `<p><strong>Name:</strong> ${name}</p><p><strong>Email:</strong> ${email}</p><p>${message.replace(/\n/g, "<br>")}</p>`,
-    };
-
-    await transporter.sendMail(mailOptions);
     return res.json({ message: "Message delivered. Thank you!" });
   } catch (err) {
-    console.error("contact error", err.message ,err);
-    return res.status(500).json({ message: "Unable to send message. Try again later." });
+    console.error("contact error:", err);
+    return res
+      .status(500)
+      .json({ message: "Unable to send message. Try again later." });
   }
 });
 
-// SPA fallback
+// SPA fallback (for direct page reloads)
 app.use((req, res) =>
   res.sendFile(path.join(__dirname, "public", "poo.html"))
 );
